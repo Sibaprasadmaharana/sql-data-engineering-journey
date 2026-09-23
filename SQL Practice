@@ -1,0 +1,491 @@
+# SQL Interview Practice
+
+20 hands-on SQL interview problems solved using the SalesDB database.
+
+## Topics Covered
+- JOINs and anti-joins
+- GROUP BY and HAVING
+- CASE statements
+- Conditional aggregation
+- Date functions
+- Window functions
+- RANK, ROW_NUMBER
+- LAG and LEAD
+- Running totals
+- Moving averages
+- Month-over-month analysis
+- Deduplication
+- Customer analytics
+
+## Learning Approach
+Learn → Try → Get Stuck → Debug → Solve → Level Up
+
+Practice database: `SalesDB`
+
+Main tables:
+- Customers
+- Orders
+- Employees
+- Products
+- Orders_Archive
+
+
+---
+
+# Questions and Solutions
+
+
+## Q01 - Customers Without Orders
+
+```sql
+-- Find customers who have never placed an order.
+
+SELECT
+    c.CustomerID,
+    c.FirstName,
+    c.LastName
+FROM Customers AS c
+LEFT JOIN Orders AS o
+    ON c.CustomerID = o.CustomerID
+WHERE o.CustomerID IS NULL;
+```
+
+
+## Q02 - Orders Without Customers
+
+```sql
+-- Find orders that do not have a matching customer.
+
+SELECT
+    o.OrderID,
+    o.CustomerID,
+    o.OrderDate,
+    o.Sales
+FROM Orders AS o
+LEFT JOIN Customers AS c
+    ON o.CustomerID = c.CustomerID
+WHERE c.CustomerID IS NULL;
+```
+
+
+## Q03 - Customer Sales Summary
+
+```sql
+-- Show each customer's total orders, total sales and average order sales.
+
+SELECT
+    c.CustomerID,
+    c.FirstName,
+    COUNT(o.OrderID) AS TotalOrders,
+    SUM(o.Sales) AS TotalSales,
+    AVG(o.Sales) AS AverageOrderSales
+FROM Customers AS c
+LEFT JOIN Orders AS o
+    ON c.CustomerID = o.CustomerID
+GROUP BY c.CustomerID, c.FirstName
+ORDER BY c.CustomerID;
+```
+
+
+## Q04 - High Value Customers
+
+```sql
+-- Find customers with more than 2 orders and total sales above 100.
+
+SELECT
+    c.CustomerID,
+    COUNT(o.OrderID) AS TotalOrders,
+    SUM(o.Sales) AS TotalSales
+FROM Customers AS c
+LEFT JOIN Orders AS o
+    ON c.CustomerID = o.CustomerID
+GROUP BY c.CustomerID
+HAVING COUNT(o.OrderID) > 2
+   AND SUM(o.Sales) > 100
+ORDER BY TotalSales DESC;
+```
+
+
+## Q05 - Sales Classification
+
+```sql
+-- Classify each order:
+-- > 50 = High
+-- 21-50 = Medium
+-- <= 20 = Low
+-- Then summarize orders, sales and average sales by category.
+
+SELECT
+    SalesCategory,
+    COUNT(OrderID) AS TotalOrders,
+    SUM(Sales) AS TotalSales,
+    AVG(Sales) AS AverageSales
+FROM (
+    SELECT
+        OrderID,
+        CustomerID,
+        Sales,
+        CASE
+            WHEN Sales > 50 THEN 'High'
+            WHEN Sales BETWEEN 21 AND 50 THEN 'Medium'
+            ELSE 'Low'
+        END AS SalesCategory
+    FROM Orders
+) AS X
+GROUP BY SalesCategory;
+```
+
+
+## Q06 - Conditional Aggregation
+
+```sql
+-- Count each customer's orders above 30 and orders
+-- less than or equal to 30.
+
+SELECT
+    CustomerID,
+    COUNT(OrderID) AS TotalOrders,
+    SUM(CASE WHEN Sales > 30 THEN 1 ELSE 0 END) AS OrdersAbove30,
+    SUM(CASE WHEN Sales <= 30 THEN 1 ELSE 0 END) AS OrdersBelowOrEqual30
+FROM Orders
+GROUP BY CustomerID;
+```
+
+
+## Q07 - Customer Spending Category
+
+```sql
+-- Classify customers based on total spending:
+-- > 200 = High Spender
+-- 100-200 = Medium Spender
+-- < 100 = Low Spender
+
+SELECT
+    CustomerID,
+    SUM(Sales) AS TotalSales,
+    CASE
+        WHEN SUM(Sales) > 200 THEN 'High Spender'
+        WHEN SUM(Sales) BETWEEN 100 AND 200 THEN 'Medium Spender'
+        ELSE 'Low Spender'
+    END AS SpendingCategory
+FROM Orders
+GROUP BY CustomerID;
+```
+
+
+## Q08 - Yearly Sales Report
+
+```sql
+-- Show yearly order count, total sales and average sales.
+
+SELECT
+    YEAR(OrderDate) AS OrderYear,
+    COUNT(OrderID) AS TotalOrders,
+    SUM(Sales) AS TotalSales,
+    AVG(Sales) AS AvgSales
+FROM Orders
+GROUP BY YEAR(OrderDate)
+ORDER BY OrderYear;
+```
+
+
+## Q09 - Shipping Performance
+
+```sql
+-- Show yearly shipping performance.
+
+SELECT
+    YEAR(OrderDate) AS OrderYear,
+    COUNT(OrderID) AS TotalOrders,
+    AVG(DATEDIFF(DAY, OrderDate, ShipDate)) AS AvgShippingDays,
+    MAX(DATEDIFF(DAY, OrderDate, ShipDate)) AS SlowestShippingDays,
+    MIN(DATEDIFF(DAY, OrderDate, ShipDate)) AS FastestShippingDays
+FROM Orders
+GROUP BY YEAR(OrderDate)
+ORDER BY OrderYear;
+```
+
+
+## Q10 - Monthly Sales Report
+
+```sql
+-- Show monthly sales chronologically.
+
+SELECT
+    YEAR(OrderDate) AS OrderYear,
+    MONTH(OrderDate) AS MonthNumber,
+    DATENAME(MONTH, OrderDate) AS MonthName,
+    SUM(Sales) AS TotalSales,
+    COUNT(OrderID) AS TotalOrders
+FROM Orders
+GROUP BY
+    YEAR(OrderDate),
+    MONTH(OrderDate),
+    DATENAME(MONTH, OrderDate)
+ORDER BY OrderYear, MonthNumber;
+```
+
+
+## Q11 - Rank Customers by Sales
+
+```sql
+-- Rank customers by total sales.
+
+SELECT
+    c.CustomerID,
+    c.FirstName,
+    SUM(o.Sales) AS TotalSales,
+    RANK() OVER (
+        ORDER BY SUM(o.Sales) DESC
+    ) AS SalesRank
+FROM Customers AS c
+LEFT JOIN Orders AS o
+    ON c.CustomerID = o.CustomerID
+GROUP BY c.CustomerID, c.FirstName;
+```
+
+
+## Q12 - Highest Selling Order per Product
+
+```sql
+-- Find the highest-selling order for each product.
+-- Include ties.
+
+SELECT *
+FROM (
+    SELECT
+        ProductID,
+        OrderID,
+        Sales,
+        RANK() OVER (
+            PARTITION BY ProductID
+            ORDER BY Sales DESC
+        ) AS RNK
+    FROM Orders
+) AS X
+WHERE RNK = 1
+ORDER BY Sales DESC;
+```
+
+
+## Q13 - Top 2 Customers by Sales
+
+```sql
+-- Find the top 2 customers by sales.
+-- Include ties.
+
+SELECT *
+FROM (
+    SELECT
+        c.CustomerID,
+        c.FirstName,
+        SUM(o.Sales) AS TotalSales,
+        RANK() OVER (
+            ORDER BY SUM(o.Sales) DESC
+        ) AS RNK
+    FROM Customers AS c
+    LEFT JOIN Orders AS o
+        ON c.CustomerID = o.CustomerID
+    GROUP BY c.CustomerID, c.FirstName
+) AS X
+WHERE RNK <= 2;
+```
+
+
+## Q14 - Previous Order with LAG
+
+```sql
+-- Show each customer's previous order date
+-- and the number of days since the previous order.
+
+SELECT
+    CustomerID,
+    OrderID,
+    OrderDate AS CurrentOrderDate,
+    LAG(OrderDate) OVER (
+        PARTITION BY CustomerID
+        ORDER BY OrderDate
+    ) AS PreviousOrderDate,
+    DATEDIFF(
+        DAY,
+        LAG(OrderDate) OVER (
+            PARTITION BY CustomerID
+            ORDER BY OrderDate
+        ),
+        OrderDate
+    ) AS DaysSincePreviousOrder
+FROM Orders;
+```
+
+
+## Q15 - Purchase Frequency with LEAD
+
+```sql
+-- Show the next order date and days until the next order.
+
+SELECT
+    CustomerID,
+    OrderID,
+    OrderDate AS CurrentOrderDate,
+    LEAD(OrderDate) OVER (
+        PARTITION BY CustomerID
+        ORDER BY OrderDate
+    ) AS NextOrderDate,
+    DATEDIFF(
+        DAY,
+        OrderDate,
+        LEAD(OrderDate) OVER (
+            PARTITION BY CustomerID
+            ORDER BY OrderDate
+        )
+    ) AS DaysUntilNextOrder
+FROM Orders;
+```
+
+
+## Q16 - Month-over-Month Sales
+
+```sql
+-- Compare each month's sales with the previous month.
+
+SELECT
+    OrderYear,
+    MonthName,
+    TotalSales,
+    PreviousMonthSales,
+    ROUND(
+        CAST(TotalSales - PreviousMonthSales AS FLOAT)
+        / NULLIF(PreviousMonthSales, 0) * 100,
+        2
+    ) AS MOM_Change
+FROM (
+    SELECT
+        YEAR(OrderDate) AS OrderYear,
+        MONTH(OrderDate) AS MonthNumber,
+        DATENAME(MONTH, OrderDate) AS MonthName,
+        SUM(Sales) AS TotalSales,
+        LAG(SUM(Sales)) OVER (
+            ORDER BY YEAR(OrderDate), MONTH(OrderDate)
+        ) AS PreviousMonthSales
+    FROM Orders
+    GROUP BY
+        YEAR(OrderDate),
+        MONTH(OrderDate),
+        DATENAME(MONTH, OrderDate)
+) AS X
+ORDER BY OrderYear, MonthNumber;
+```
+
+
+## Q17 - Running Total by Product
+
+```sql
+-- Calculate a running sales total for each product.
+
+SELECT
+    ProductID,
+    OrderID,
+    OrderDate,
+    Sales,
+    SUM(Sales) OVER (
+        PARTITION BY ProductID
+        ORDER BY OrderDate
+    ) AS RunningTotal
+FROM Orders;
+```
+
+
+## Q18 - Three Order Moving Average
+
+```sql
+-- Calculate a 3-order moving average for each product.
+
+SELECT
+    ProductID,
+    OrderID,
+    OrderDate,
+    Sales,
+    AVG(Sales) OVER (
+        PARTITION BY ProductID
+        ORDER BY OrderDate
+        ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+    ) AS MovingAverage
+FROM Orders;
+```
+
+
+## Q19 - Deduplicate Orders Archive
+
+```sql
+-- Keep the latest record for each OrderID.
+
+SELECT *
+FROM (
+    SELECT
+        OrderID,
+        OrderDate,
+        CreationTime,
+        ROW_NUMBER() OVER (
+            PARTITION BY OrderID
+            ORDER BY CreationTime DESC
+        ) AS RNK
+    FROM Orders_Archive
+) AS X
+WHERE RNK = 1;
+```
+
+
+## Q20 - Customer 360
+
+```sql
+-- Build a customer-level summary containing:
+-- CustomerID, FirstName, TotalOrders, TotalSales,
+-- AverageOrderSales, SpendingCategory and SalesRank.
+--
+-- Learning note:
+-- The order-history analysis is kept separate here because the
+-- current learning stage focuses on understanding each problem
+-- independently before combining them into one large query.
+
+-- Part 1: Customer Summary
+
+SELECT
+    c.CustomerID,
+    c.FirstName,
+    COUNT(o.OrderID) AS TotalOrders,
+    SUM(o.Sales) AS TotalSales,
+    AVG(o.Sales) AS AverageOrderSales,
+    CASE
+        WHEN SUM(o.Sales) > 200 THEN 'High Spender'
+        WHEN SUM(o.Sales) BETWEEN 100 AND 200 THEN 'Medium Spender'
+        ELSE 'Low Spender'
+    END AS SpendingCategory,
+    RANK() OVER (
+        ORDER BY SUM(o.Sales) DESC
+    ) AS SalesRank
+FROM Customers AS c
+LEFT JOIN Orders AS o
+    ON c.CustomerID = o.CustomerID
+GROUP BY c.CustomerID, c.FirstName;
+
+
+-- Part 2: Order History
+
+SELECT
+    CustomerID,
+    OrderID,
+    OrderDate,
+    LAG(OrderDate) OVER (
+        PARTITION BY CustomerID
+        ORDER BY OrderDate
+    ) AS PreviousOrderDate,
+    DATEDIFF(
+        DAY,
+        LAG(OrderDate) OVER (
+            PARTITION BY CustomerID
+            ORDER BY OrderDate
+        ),
+        OrderDate
+    ) AS DaysSincePreviousOrder
+FROM Orders;
+```
